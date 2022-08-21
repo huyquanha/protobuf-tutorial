@@ -1,0 +1,36 @@
+load("@npm//@bazel/typescript:index.bzl", "ts_config", "ts_project")
+load("@build_bazel_rules_nodejs//:index.bzl", "nodejs_binary")
+
+# Related issue: https://github.com/bazelbuild/rules_nodejs/issues/2281
+# Basically, we need this, otherwise the imported javascripts files
+# (generated from buf generate) won't be copied over to the output directory.
+TS_OUT_DIR = "build"
+
+ts_config(
+    name = "tsconfig",
+    src = "tsconfig.json",
+    deps = [
+        "//:tsconfig",
+    ],
+)
+
+ts_project(
+    name = "main",
+    srcs = glob(["src/**/*.ts"]),
+    composite = True,
+    declaration = True,
+    out_dir = TS_OUT_DIR,
+    root_dir = "src",
+    tsconfig = ":tsconfig",
+    deps = [
+        "//server2_client",
+        "//server_client",
+        "@npm//@grpc/grpc-js",
+    ],
+)
+
+nodejs_binary(
+    name = "server2",
+    data = [":main"],
+    entry_point = "{}/{}".format(TS_OUT_DIR, "index.ts"),
+)

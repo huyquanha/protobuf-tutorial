@@ -1,0 +1,28 @@
+diff --git a/node_modules/jest-haste-map/build/crawlers/node.js b/node_modules/jest-haste-map/build/crawlers/node.js
+index e8da794..9a3c2ec 100644
+--- a/node_modules/jest-haste-map/build/crawlers/node.js
++++ b/node_modules/jest-haste-map/build/crawlers/node.js
+@@ -274,7 +274,10 @@ module.exports = async function nodeCrawl(options) {
+     enableSymlinks,
+     roots
+   } = options;
+-  const useNativeFind = await hasNativeFindSupport(forceNodeFilesystemAPI);
++  // Hack because we can't enable these options through create-react-app.
++  const forceNodeFilesystemAPIOverride = true;
++  const enableSymlinksOverride = true;
++  const useNativeFind = await hasNativeFindSupport(forceNodeFilesystemAPIOverride);
+   return new Promise(resolve => {
+     const callback = list => {
+       const files = new Map();
+@@ -301,9 +304,9 @@ module.exports = async function nodeCrawl(options) {
+     };
+ 
+     if (useNativeFind) {
+-      findNative(roots, extensions, ignore, enableSymlinks, callback);
++      findNative(roots, extensions, ignore, enableSymlinksOverride, callback);
+     } else {
+-      find(roots, extensions, ignore, enableSymlinks, callback);
++      find(roots, extensions, ignore, enableSymlinksOverride, callback);
+     }
+   });
+ };

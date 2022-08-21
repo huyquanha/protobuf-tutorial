@@ -1,0 +1,12 @@
+load("@npm//@bazel/typescript:index.bzl", "ts_config")
+
+# We are not sure why this is needed yet, so comment out for now.
+# Suspicision: some packages might want to refer directly to the file
+# instead of through the ts_config rule, but I don't think that's recommended.
+# exports_files(["tsconfig.json"], ["//:__subpackages__"])
+
+ts_config(
+    name = "tsconfig",
+    src = "tsconfig.json",
+    visibility = ["//:__subpackages__"],
+)

@@ -1,0 +1,8 @@
+load("@build_bazel_rules_nodejs//:index.bzl", "js_library")
+
+js_library(
+    name = "server_client",
+    package_name = "server_client",
+    srcs = glob(["build/**/*"]),
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,26 @@
+version: v1
+plugins:
+  # Equivalent to --js_out=import_style=commonjs,binary:..server/proto
+  # Notice the name has to be js so concatenating with out --> js_out
+  - name: js
+    out: ../../server_client/build/proto
+    opt: import_style=commonjs,binary
+  # Equivalent to --grpc_out=grpc_js:..server/proto
+  # By default the plugin used will be protoc-gen-${name} i.e protoc-gen-grpc
+  # but path will override that.
+  - name: grpc
+    # These paths are relative to the current directory, but because
+    # buf.gen.yaml is inside /proto, you have to change current directory
+    # to /proto to run it. 
+    out: ../../server_client/build/proto
+    opt: grpc_js
+    path: grpc_tools_node_protoc_plugin
+  - name: ts
+    out: ../../server_client/build/proto
+    opt: grpc_js
+  - name: js
+    out: ../../client/src/proto
+    opt: import_style=commonjs
+  - name: grpc-web
+    out: ../../client/src/proto
+    opt: import_style=typescript,mode=grpcwebtext
