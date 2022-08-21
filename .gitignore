@@ -52,7 +52,7 @@ web_modules/
 *.tsbuildinfo
 
 # Typescript buids
-build/
+build
 
 # Optional npm cache directory
 .npm
