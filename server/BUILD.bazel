@@ -1,5 +1,9 @@
 load("@npm//@bazel/typescript:index.bzl", "ts_config", "ts_project")
-load("@build_bazel_rules_nodejs//:index.bzl", "nodejs_binary")
+
+# load("@build_bazel_rules_nodejs//:index.bzl", "nodejs_binary")
+load("@io_bazel_rules_docker//nodejs:image.bzl", "nodejs_image")
+load("@io_bazel_rules_docker//container:container.bzl", "container_image")
+load("@k8s_deploy//:defaults.bzl", "k8s_deploy")
 
 # Related issue: https://github.com/bazelbuild/rules_nodejs/issues/2281
 # Basically, we need this to define a different output directory,
@@ -33,8 +37,33 @@ ts_project(
     ],
 )
 
-nodejs_binary(
+# docker_run_flags can only be specified from container_image
+# so we need to use it to produce another base image, and then
+# use that within nodejs_image.
+container_image(
+    name = "server_image",
+    base = "@nodejs_image_base//image",
+    # Overwrite the default host networking, because host networking
+    # does not work properly for Docker Desktop on Mac/Windows.
+    docker_run_flags = "-it --rm",
+    ports = ["4000"],
+)
+
+nodejs_image(
+    # This would create an image named bazel/server:server (the 1st server is the package name, the second is the target name,
+    # treated like a tag).
     name = "server",
+    # Override the base image.
+    base = ":server_image",
     data = [":main"],
     entry_point = "{}/{}".format(TS_OUT_DIR, "index.ts"),
+    # https://github.com/bazelbuild/rules_docker/issues/2078
+    include_node_repo_args = False,
+    # https://bazelbuild.github.io/rules_nodejs/Toolchains.html#nodejs-binary-for-the-target-platform
+    node_repository_name = "nodejs_linux_amd64",
+)
+
+k8s_deploy(
+    name = "k8s_server",
+    template = ":deployment.yaml",
 )

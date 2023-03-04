@@ -15,7 +15,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@grpc/grpc-js": "^1.6.8"
+    "@grpc/grpc-js": "^1.6.8",
+    "google-protobuf": "^3.21.0"
   },
   "devDependencies": {
     "@bazel/buildifier": "^5.1.0",

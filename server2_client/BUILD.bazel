@@ -4,5 +4,8 @@ js_library(
     name = "server2_client",
     package_name = "server2_client",
     srcs = glob(["build/**/*"]),
+    deps = [
+        "@npm//google-protobuf",
+    ],
     visibility = ["//visibility:public"],
 )

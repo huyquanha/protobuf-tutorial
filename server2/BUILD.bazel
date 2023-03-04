@@ -1,5 +1,7 @@
 load("@npm//@bazel/typescript:index.bzl", "ts_config", "ts_project")
-load("@build_bazel_rules_nodejs//:index.bzl", "nodejs_binary")
+# load("@build_bazel_rules_nodejs//:index.bzl", "nodejs_binary")
+load("@io_bazel_rules_docker//nodejs:image.bzl", "nodejs_image")
+load("@io_bazel_rules_docker//container:container.bzl", "container_image")
 
 # Related issue: https://github.com/bazelbuild/rules_nodejs/issues/2281
 # Basically, we need this, otherwise the imported javascripts files
@@ -29,8 +31,29 @@ ts_project(
     ],
 )
 
-nodejs_binary(
+# docker_run_flags can only be specified from container_image
+# so we need to use it to produce another base image, and then
+# use that within nodejs_image.
+container_image(
+    name = "server2_image",
+    base = "@nodejs_image_base//image",
+    # Overwrite the default host networking, because host networking
+    # does not work properly for Docker Desktop on Mac/Windows.
+    docker_run_flags = "-it --rm",
+    env = {
+        "GRPC_TRACE": "all",
+        "GRPC_VERBOSITY": "debug"
+    }
+)
+
+nodejs_image(
     name = "server2",
     data = [":main"],
+    # Override the base image.
+    base = ":server2_image",
     entry_point = "{}/{}".format(TS_OUT_DIR, "index.ts"),
+    # https://bazelbuild.github.io/rules_nodejs/Toolchains.html#nodejs-binary-for-the-target-platform
+    node_repository_name = "nodejs_linux_amd64",
+    # https://github.com/bazelbuild/rules_docker/issues/2078
+    include_node_repo_args = False,
 )

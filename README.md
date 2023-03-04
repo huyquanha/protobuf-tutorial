@@ -141,3 +141,76 @@ nix-shell -p niv --run "niv update"
 ```
 
 - Follow this [guide](https://nixos.org/guides/declarative-and-reproducible-developer-environments.html#declarative-reproducible-envs) to install and configure `direnv`, so that whenever you enter the directory of your project, your changes in `shell.nix` is reloaded automatically without having to manually enter `nix-shell`.
+
+
+## Introducing Bazel with Docker
+- `rules_docker` uses `bazel_gazelle` and so the rules suffer form the gazelle issue of not working nicely with `WORKSPACE.bazel` (see issue [here](https://github.com/bazelbuild/rules_docker/issues/1902)) => workaround for now is just changing the name to `WORKSPACE`
+- When specifying `nodejs_image`, you need to set the `node_repository_name` to `nodejs_linux_amd64` as per [here](https://bazelbuild.github.io/rules_nodejs/Toolchains.html#nodejs-binary-for-the-target-platform)
+
+When starting `server` and `server2` containers, we noticed that they ARE able to communicate with each other without any port-binding. Why?
+  - That's because by default, `nodejs_image` seems to run the container using host networking (Docker [docs](https://docs.docker.com/network/host/))
+  - To verify this, we can run the following
+```
+# List all networks a container belongs to
+docker inspect -f '{{range $key, $value := .NetworkSettings.Networks}}{{$key}} {{end}}' [container name/ID]
+
+# From the network, list all containers belonging to it.
+docker network inspect -f '{{range .Containers}}{{.Name}} {{end}}' [network]
+```
+  - You should see that the `Driver:host` and also the name of the 2 containers for `server` and `server2`.
+  - However, something to note is for Docker Desktop for Mac, the docker daemon runs inside a Linux virtual machine, so the "host" here is actually that Linux host, not our machine.
+
+- This seems to be introduced by this [PR](https://github.com/bazelbuild/rules_docker/pull/312/files). Another related discussion: https://github.com/bazelbuild/rules_docker/issues/309
+  - However, host networking doesn't work on Docker Desktop for Mac/Windows (see [issue](https://github.com/docker/for-mac/issues/1031)), so we need to overwrite the `docker_run_flags` value to use the default
+  network mode (bridge) instead.
+```
+container_image(
+    ...
+    # Overwrite the default host networking (removing --network=host), 
+    # because host networking does not work properly for Docker Desktop 
+    # on Mac/Windows.
+    docker_run_flags = "-it --rm"
+)
+```
+  - We then need to publish the port when running the container i.e `bazel run //server -- -p 4000:4000` so it's accessible from the local machine.
+
+### Why 0.0.0.0 instead of localhost/127.0.0.1?
+Link: https://argus-sec.com/docker-networking-behind-the-scenes/#:~:text=docker0%20is%20a%20virtual%20bridge,communicate%20with%20the%20outside%20world.
+
+Each computer/Docker container has a different IP address for each network interface. For example, our local machine will have
+2 different IP addresses, one for interfacing with other hosts in the local network (eth0 interface), and another is our familiar
+loopback interface that every machine has, and our machine's address in this interface is `127.0.0.1`. The reason of having this loopback inteface is so that if Ethernet cable is disconnected, or WiFi is turned off, applications running on your computer can still at least
+talk to servers on the same machine (See [link](https://askubuntu.com/questions/247625/what-is-the-loopback-device-and-how-do-i-use-it))
+  - When a Docker container is run in bridge networking mode, it's given an IP address within the docker0 network interface, which is something like `172.17.0.2`. If the container is run with port mapping i.e `-p 4000:4000`, any traffic to `localhost:4000` or `127.0.0.1:4000` will be forwarded to the container's IP address at the destination port i.e `172.17.0.2:4000`.
+  - However, that's the container's IP address on its eth0 interface. If the server running inside the container is configured to listen for traffice on `localhost:4000` or `127.0.0.1:4000`, that's an entirely different interface (the loopback interface, of the container itself),
+  and that's un-reachable from outside the container. Traffic to `172.17.0.2:4000` will obviously be dropped, because nothing is listening to it.
+  - To fix this, the server has to listen on `0.0.0.0:4000` instead. `0.0.0.0:${port}` basically means listening for traffics to port `${port}` on all IP addresses on all network interfaces => it includes both loopback and eth0. Now your server can receive outside traffic forwarded by Docker.
+
+### Why "server2" cannot talk to "server" using `0.0.0.0:4000`?
+- The situation:
+  - We have `server` running with `bazel run //server -- -p 4000:4000`
+  - We then start `server2` with `bazel run //server2 -- -p 4001:4001`
+  - We try to connect to `server` from `server2` using `0.0.0.0:4000`
+  - Connection cannot be established, but it's working fine when server and server2 are not running inside Docker containers. Why?
+
+When server and server2 were run directly on the hos machine, their `0.0.0.0` means the same thing, the same computer/set of IP addresses: the host. Therefore, requests from one can easily reach the other. However, when running inside Docker containers, `server` and `server2`
+were each given a different IP address, each with its own loop-back and eth0 interface. Therefore, `0.0.0.0:4000` in the context of `server2`
+means: trying to find some processes running on the same local loop-back/eth0 inteface on port 4000. Obviously, there's none.
+
+To connect to `server`, `server2` either has to hard-code the IP address of `server`, but this is often difficult because the IP address
+is only granted after the container is already running. Instead, since `server` is run with port-forwarding enabled, any traffic to the host
+machine will automatically be forwarded to `server`.
+  - Within a Docker container, you can send traffic to the host machine using a special DNS name: `host.docker.internal`
+  => We will change the connection URL to `host.docker.internal:4000`, and we are able to reach our `server` from `server2` again!!
+
+- Alternatively, if we run the 2 containers in host networking instead of bridge networking, it might work out of the box with `0.0.0.0`
+because the 2 containers are running using the host's network interface itself now.
+
+**TODO**: Try to make host networking work.
+
+## ADDING K8S
+
+See instructions at: https://github.com/bazelbuild/rules_k8s
+
+An example: https://medium.com/@josesm919/how-to-build-docker-images-and-deploy-them-on-kubernetes-with-bazel-ce300e832940
+
